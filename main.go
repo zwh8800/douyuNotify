@@ -50,30 +50,50 @@ func pushMsgToServerChan(title, description string) error {
 	return nil
 }
 
-func checkIfOnline(currentState bool) (bool, map[string]interface{}) {
-	resp, err := http.Get("http://acfunfix.sinaapp.com/mama.php?url=http://www.douyutv.com/156277")
+type DouyuLiveData struct {
+	Error int    `json:"error"`
+	Msg   string `json:"msg"`
+	Data  struct {
+		RoomID       string `json:"room_id"`
+		TagName      string `json:"tag_name"`
+		RoomSrc      string `json:"room_src"`
+		RoomName     string `json:"room_name"`
+		ShowStatus   string `json:"show_status"`
+		Online       int    `json:"online"`
+		Nickname     string `json:"nickname"`
+		HlsURL       string `json:"hls_url"`
+		IsPassPlayer int    `json:"is_pass_player"`
+		IsTicket     int    `json:"is_ticket"`
+		StoreLink    string `json:"storeLink"`
+	} `json:"data"`
+}
+
+func checkIfOnline(currentState bool) (bool, interface{}) {
+	resp, err := http.Get("http://m.douyu.com/html5/live?roomId=156277")
 	if err != nil {
-		glog.Warning(err)
+		glog.Warningln(err)
 		return currentState, nil
 	}
 	defer resp.Body.Close()
-	respData, err := ioutil.ReadAll(resp.Body)
+
+	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		glog.Warning(err)
-		return currentState, nil
-	}
-	var jsonContent map[string]interface{}
-	if err := json.Unmarshal(respData, &jsonContent); err != nil {
-		glog.Warning(err)
-		return currentState, nil
-	}
-	code, ok := jsonContent["code"].(float64)
-	if !ok {
-		glog.Warning(`jsonContent["code"].(float64) not ok`)
+		glog.Warningln(err)
 		return currentState, nil
 	}
 
-	return int(code) == 200, jsonContent
+	var douyuLiveData DouyuLiveData
+	if err := json.Unmarshal(data, &douyuLiveData); err != nil {
+		glog.Warningln(err)
+		return currentState, nil
+	}
+
+	if douyuLiveData.Error != 0 {
+		glog.Warningf("douyuLiveData.error = %d, douyuLiveData.msg = %s\n", douyuLiveData.Error, douyuLiveData.Msg)
+		return currentState, nil
+	}
+
+	return douyuLiveData.Data.ShowStatus == "1", douyuLiveData
 }
 
 func JsonStringify(obj interface{}, indent bool) string {
@@ -99,7 +119,7 @@ func mainLoop(stopChannel chan bool) {
 			if thisState {
 				glog.Infoln("66开播啦")
 				if err := pushMsgToServerChan("66开播啦", JsonStringify(jsonContent, true)); err != nil {
-					glog.Warning(err)
+					glog.Warningln(err)
 					continue
 				}
 
